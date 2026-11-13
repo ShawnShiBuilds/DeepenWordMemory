@@ -150,6 +150,22 @@ def on_message(data: P2ImMessageReceiveV1):
 handler = lark.EventDispatcherHandler.builder("", "").register_p2_im_message_receive_v1(on_message).build()
 ws = lark.ws.Client(APP_ID, APP_SECRET, event_handler=handler, log_level=lark.LogLevel.INFO)
 
+
+def _setup_logging():
+    """后台运行(计划任务)时 stdout 是黑洞, 统一重定向到 bot.log (UTF-8, 追加)"""
+    import logging
+    log_path = HERE / "bot.log"
+    stream = open(log_path, "a", buffering=1, encoding="utf-8")
+    sys.stdout = stream
+    sys.stderr = stream
+    # lark SDK 的日志走 logging 模块, 接到同一文件
+    lark_log = logging.getLogger("lark_oapi")
+    lark_log.setLevel(logging.INFO)
+    if not lark_log.handlers:
+        lark_log.addHandler(logging.StreamHandler(stream))
+
+
 if __name__ == "__main__":
+    _setup_logging()
     print("飞书机器人已启动, 等待消息... (手机上给机器人发PDF即可)")
     ws.start()

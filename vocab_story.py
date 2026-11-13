@@ -7,6 +7,7 @@ vocab_story.py — 每日背诵单词巩固工具
 """
 import json
 import re
+import shutil
 import subprocess
 import sys
 import html
@@ -72,13 +73,26 @@ def build_prompt(words: list[dict]) -> str:
 {word_list}"""
 
 
+def _claude_cmd() -> list[str]:
+    """定位 claude CLI: 优先 PATH, 回退常见安装位置(计划任务/服务环境 PATH 不含用户目录)"""
+    if shutil.which("claude"):
+        return ["claude"]
+    for cand in (Path.home() / ".local" / "bin" / "claude.exe",
+                 Path.home() / ".local" / "bin" / "claude",
+                 Path.home() / "AppData" / "Roaming" / "npm" / "claude.cmd"):
+        if cand.exists():
+            return [str(cand)]
+    return ["claude"]  # 找不到就按原名调用, 报错信息更直观
+
+
 def call_claude(prompt: str) -> str:
     """调用本机 claude CLI (prompt 走 stdin, 10分钟超时, 失败重试一次)"""
+    cmd = _claude_cmd()
     last_err = ""
     for _ in range(2):
         try:
             proc = subprocess.run(
-                ["claude", "-p", "--model", "sonnet"],
+                cmd + ["-p", "--model", "sonnet"],
                 input=prompt, capture_output=True, text=True, encoding="utf-8", timeout=600,
             )
             if proc.returncode == 0:
