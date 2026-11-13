@@ -1,0 +1,5 @@
+{
+  "app_id": "cli_xxxxxxxxxxxxxxxx",
+  "app_secret": "your_app_secret_here",
+  "public_url": "http://<your-public-ip-or-domain>:8000"
+}

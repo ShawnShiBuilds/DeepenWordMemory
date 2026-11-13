@@ -1,0 +1,3 @@
+# DeepenWordMemory — 核心依赖
+# 用法: pip install -r requirements.txt
+pypdf>=4.0

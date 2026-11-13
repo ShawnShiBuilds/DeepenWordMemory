@@ -1,0 +1,4 @@
+# 网页服务 — 可选模块
+# 用法: pip install -r webapp/requirements.txt
+fastapi>=0.110
+uvicorn[standard]>=0.27

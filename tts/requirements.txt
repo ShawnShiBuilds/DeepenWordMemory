@@ -1,0 +1,3 @@
+# TTS 音频合成 — 可选模块
+# 用法: pip install -r tts/requirements.txt
+edge-tts>=6.1

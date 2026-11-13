@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>每日单词短文</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root{--bg:#faf9f7;--fg:#2b2a28;--accent:#b45309;--bd:#e5e1da;--btn:#b45309;--btnfg:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#1c1b19;--fg:#e8e4dd;--accent:#fbbf24;--bd:#3a3733;--btn:#fbbf24;--btnfg:#1c1b19}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.7 "Segoe UI",system-ui,sans-serif;padding:20px 16px calc(20px + env(safe-area-inset-bottom))}
+.wrap{max-width:640px;margin:0 auto}
+h1{font-size:20px;margin:0 0 16px}
+.card{border:1px solid var(--bd);border-radius:14px;padding:18px;background:var(--bg);margin-bottom:14px}
+label.btn{display:block;text-align:center;background:var(--btn);color:var(--btnfg);border-radius:10px;padding:14px;font-weight:600;cursor:pointer}
+input[type=file]{display:none}
+.hint{font-size:13px;opacity:.7;margin-top:10px;text-align:center}
+#prog{display:none}
+.bar{height:8px;border-radius:4px;background:var(--bd);overflow:hidden;margin:12px 0}
+.bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .5s}
+#status-text{font-size:14px;text-align:center}
+a.doc{display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:var(--fg);border:1px solid var(--bd);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:var(--bg)}
+a.doc:active{opacity:.7}
+a.doc .t{font-weight:600}
+a.doc .d{font-size:12px;opacity:.65}
+.err{color:#dc2626;font-size:14px;text-align:center;margin-top:8px}
+</style></head><body><div class="wrap">
+<h1>📚 每日单词短文</h1>
+<div class="card">
+  <label class="btn">📄 上传今日单词 PDF
+    <input type="file" id="file" accept="application/pdf">
+  </label>
+  <div class="hint">上传后自动生成短文（约 2–4 分钟），完成后自动跳转</div>
+  <div id="prog">
+    <div class="bar"><i id="barfill"></i></div>
+    <div id="status-text">上传中…</div>
+    <div class="err" id="errtext"></div>
+  </div>
+</div>
+<h1 style="font-size:16px">历史短文</h1>
+<div id="list">加载中…</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+async function loadList(){
+  const rows=await (await fetch('/api/list')).json();
+  $('list').innerHTML=rows.length?rows.map(r=>
+    `<a class="doc" href="/doc/${r.id}"><span><span class="t">${r.title}</span><br><span class="d">${r.date} · ${r.words} 词</span></span><span>›</span></a>`).join('')
+    :'<div class="hint">还没有记录</div>';
+}
+$('file').addEventListener('change',async e=>{
+  const f=e.target.files[0]; if(!f)return;
+  $('prog').style.display='block';$('errtext').textContent='';
+  $('status-text').textContent='上传中…';
+  const fd=new FormData();fd.append('file',f);
+  let id;
+  try{
+    const r=await (await fetch('/api/upload',{method:'POST',body:fd})).json();
+    if(r.detail)throw new Error(r.detail);
+    id=r.id;
+  }catch(err){$('status-text').textContent='上传失败';$('errtext').textContent=err.message;return}
+  const timer=setInterval(async()=>{
+    const t=await (await fetch('/api/status/'+id)).json();
+    if(t.status==='error'){$('status-text').textContent='生成失败';$('errtext').textContent=t.error;clearInterval(timer);return}
+    const pct=t.total?Math.round(t.done/t.total*100):5;
+    $('barfill').style.width=pct+'%';
+    $('status-text').textContent=t.status==='done'?'✅ 完成, 正在打开…':`生成中 ${t.done}/${t.total} 篇…（共 ${t.words} 词）`;
+    if(t.status==='done'){clearInterval(timer);location.href='/doc/'+id;loadList()}
+  },2000);
+});
+loadList();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+</script></body></html>
