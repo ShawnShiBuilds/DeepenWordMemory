@@ -180,6 +180,7 @@ def render_html(words: list[dict], passages: list[dict], pdf_path: Path) -> str:
         return token_re.sub(repl, html.escape(s).replace("\n", "<br>"))
 
     blocks = []
+    toc_links = []
     paras_manifest = {}
     audio_stem = re.sub(r"_passage\.html$", "", pdf_path.stem)
     for i, p in enumerate(passages, 1):
@@ -196,7 +197,13 @@ def render_html(words: list[dict], passages: list[dict], pdf_path: Path) -> str:
         body += (f'<details class="trans"><summary>📖 中文翻译（点击展开）</summary>'
                  f"<div>{html.escape(trans).replace(chr(10), '<br>')}</div></details>"
                  if trans else "")
-        blocks.append(f'<div class="passage"><div class="ptitle">短文 {i}</div>{body}</div>')
+        blocks.append(f'<div class="passage" id="p{i}"><div class="ptitle">短文 {i}</div>{body}</div>')
+        # 目录项: 标题 + 首段预览(截16字符)
+        first_para = paras_manifest[f"p{i}"][0] if paras_manifest[f"p{i}"] else ""
+        preview = html.escape(first_para[:16])
+        toc_links.append(f'<a class="toc-item" href="#p{i}"><b>短文 {i}</b><span>{preview}…</span></a>')
+    toc_html = (f'<nav class="toc" id="toc"><div class="toc-title">📑 目录 · 共 {len(toc_links)} 篇短文</div>'
+                f'<div class="toc-grid">{"".join(toc_links)}</div></nav>')
     extra = "\n".join(p.get("extra", "") for p in passages if p.get("extra"))
     html_extra = html_body(extra) if extra else ""
     word_cards = "\n".join(
@@ -237,10 +244,24 @@ h2{{font-size:15px;margin:26px 0 10px}}
 .ph{{color:var(--accent);font-size:13px}}
 .mn{{font-size:13px;opacity:.85}}
 .extra{{border-left:3px solid var(--accent);padding:4px 14px;font-size:14px;opacity:.9}}
+.toc{{background:var(--bg);border:1px solid var(--bd);border-radius:12px;padding:16px 18px;margin-bottom:22px}}
+.toc-title{{font-size:14px;color:var(--accent);margin-bottom:10px;font-weight:600}}
+.toc-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}}
+.toc-item{{display:flex;flex-direction:column;gap:2px;text-decoration:none;color:var(--fg);
+  border:1px solid var(--bd);border-radius:8px;padding:8px 12px;font-size:13px;background:var(--bg)}}
+.toc-item:active{{opacity:.7}}
+.toc-item b{{color:var(--accent);font-size:13px}}
+.toc-item span{{font-size:12px;opacity:.65;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}}
+#backtop{{position:fixed;right:18px;bottom:24px;z-index:99;display:none;width:44px;height:44px;
+  border-radius:50%;border:1px solid var(--bd);background:var(--tipbg);color:var(--tipfg);
+  font-size:18px;line-height:44px;text-align:center;text-decoration:none;box-shadow:0 4px 16px rgba(0,0,0,.3);opacity:.92}}
+#backtop.show{{display:block}}
 </style></head><body><div class="wrap">
 <h1>每日单词巩固短文</h1>
 <div class="meta">{pdf_path.stem} · 共 {len(words)} 词 · 短文覆盖 {len(used)} 词 · 未覆盖 {len(words)-len(used)} 词(卡片半透明)</div>
+{toc_html}
 {''.join(blocks)}
+<a href="#toc" id="backtop" aria-label="返回目录">⌃</a>
 {f'<h2>补充例句</h2><div class="extra">{html_extra}</div>' if html_extra else ''}
 <h2>单词表（点击单词卡片外的正文高亮词可查看释义）</h2>
 <div class="cards">{word_cards}</div>
@@ -253,21 +274,35 @@ document.querySelectorAll('.vw').forEach(el=>el.addEventListener('click',e=>{{
 }}));
 document.addEventListener('click',()=>document.querySelectorAll('.vw.open').forEach(o=>o.classList.remove('open')));
 document.querySelectorAll('.vw').forEach(el=>{{const tip=el.querySelector('.tip');tip.textContent=el.dataset.tip;}});
+const backtop=document.getElementById('backtop');
+if(backtop){{window.addEventListener('scroll',()=>{{
+  backtop.classList.toggle('show',window.scrollY>600);
+  backtop.textContent=window.scrollY>600?'⌃':'⌃';
+}},{{passive:true}});}}
 </script>
 </div></body></html>"""
 
 
 def generate_audio(html_path: Path) -> bool:
-    """调用 tts/gen_audio.py 为已生成的HTML合成逐段音频(失败不阻塞)
+    """调用 gen_audio.py 为已生成的HTML合成逐段音频(失败不阻塞)
 
-    解释器选择: 优先用 tts/.venv 专用虚拟环境; 若不存在则回退到当前解释器
-    (此时需保证 edge-tts 已随主环境安装)。
+    目录兼容: 仓库结构 tts/gen_audio.py (+ 可选 tts/.venv);
+    旧目录结构 English/gen_audio.py (+ English/.venv-tts)。
+    解释器: 专用 venv 优先, 否则回退当前解释器(需已装 edge-tts)。
     """
-    script = HERE / "tts" / "gen_audio.py"
-    if not script.exists():
-        print("⚠ 未找到 tts/gen_audio.py, 跳过音频生成")
+    candidates = [
+        (HERE / "tts" / "gen_audio.py", HERE / "tts" / ".venv"),
+        (HERE / "English" / "gen_audio.py", HERE / "English" / ".venv-tts"),
+    ]
+    script = venv_dir = None
+    for s, v in candidates:
+        if s.exists():
+            script, venv_dir = s, v
+            break
+    if script is None:
+        print("⚠ 未找到 gen_audio.py (tts/ 或 English/), 跳过音频生成")
         return False
-    venv_py = HERE / "tts" / ".venv" / "Scripts" / "python.exe"
+    venv_py = venv_dir / "Scripts" / "python.exe"
     py = str(venv_py) if venv_py.exists() else sys.executable
     try:
         proc = subprocess.run([py, str(script), "--src", str(html_path)],

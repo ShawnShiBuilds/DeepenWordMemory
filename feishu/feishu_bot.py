@@ -119,6 +119,14 @@ def on_message(data: P2ImMessageReceiveV1):
         msg = data.event.message
         sender = (data.event.sender and data.event.sender.sender_id
                   and data.event.sender.sender_id.open_id) or ""
+        # 记住 chat_id (后续主动推送/补发用): {chat_id: {"open_id":..., "ts":...}}
+        try:
+            chats_path = HERE / "_chats.json"
+            chats = json.loads(chats_path.read_text(encoding="utf-8")) if chats_path.exists() else {}
+            chats[msg.chat_id] = {"open_id": sender, "ts": __import__("time").time()}
+            chats_path.write_text(json.dumps(chats, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception:
+            pass
         if msg.message_type == "file":
             content = json.loads(msg.content)
             threading.Thread(
